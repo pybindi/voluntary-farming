@@ -21,6 +21,18 @@ except ImportError:
 
 
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+BG = '#0b1220'
+CYAN = '#67e8f9'
+MUTED = '#94a3b8'
+GREEN = '#86efac'
+AMBER = '#fcd34d'
+RED = '#fda4af'
+
+
+def metric(label, value, caption, accent=CYAN):
+    return Panel(Group(Text(label, style=f'bold {MUTED}'), Text(value, style=f'bold {accent}'),
+                       Text(caption, style=MUTED, overflow='ellipsis', no_wrap=True)),
+                 border_style='#334155', style=f'on {BG}', padding=(0, 1), box=box.ROUNDED)
 
 
 def duration(seconds):
@@ -30,7 +42,7 @@ def duration(seconds):
 
 class DashboardState:
     def __init__(self):
-        self.status = 'Подготовка · майнер ещё не запущен'
+        self.status = 'Preparing · miner has not started'
         self.sample = {}
         self.pool = '—'
         self.cap = None
@@ -41,6 +53,7 @@ class DashboardState:
         self.speed = '—'
         self.accepted = 0
         self.rejected = 0
+        self.speed_history = deque(maxlen=24)
         self.lines = deque(maxlen=60)
         self.partial = ''
 
@@ -61,54 +74,97 @@ class DashboardState:
             match = re.search(r'Average speed \([^)]*\):\s*([\d.]+)\s*Mh/s', line, re.I)
             if match:
                 self.speed = match[1] + ' MH/s'
-                if self.finished is None and self.status.startswith(('Процесс', 'Майнинг')):
-                    self.status = 'Майнинг · получен хешрейт от майнера'
+                self.speed_history.append(float(match[1]))
+                if self.finished is None and self.status.startswith(('Process', 'Mining')):
+                    self.status = 'Mining · hashrate reported by miner'
             if 'share accepted' in line.lower():
                 self.accepted += 1
             if 'share rejected' in line.lower():
                 self.rejected += 1
 
-    def render(self, now=None, log_rows=10):
+    def render(self, now=None, log_rows=10, width=110, compact=False):
         now = time.monotonic() if now is None else now
-        elapsed = max(0, (self.finished or now) - self.started) if self.started is not None else 0
+        end = now if self.finished is None else self.finished
+        elapsed = max(0, end - self.started) if self.started is not None else 0
         remaining = max(0, self.seconds - elapsed)
         sample = self.sample
         temp = sample.get('temp')
         temperature = '—' if temp is None else f'{temp:.0f} °C'
-        temp_style = 'red bold' if temp is not None and temp >= self.stop_temp - 5 else 'green'
-        header = Text('GPU MINING', style='bold cyan')
-        header.append('  /  ETC · ETCHASH', style='dim')
-        grid = Table.grid(expand=True, padding=(0, 2))
-        grid.add_column(ratio=1)
-        grid.add_column(ratio=1)
-        grid.add_row(Text(sample.get('name', 'NVIDIA GPU'), style='bold white'), Text(self.status, style='cyan'))
-        grid.add_row(Text('Скорость: ' + self.speed, style='bold cyan'),
-                     Text(f'Шары A/R: {self.accepted} / {self.rejected}', style='green'))
-        grid.add_row(Text('Ядро: ' + temperature, style=temp_style),
-                     Text(f'Лимит GPU: {sample.get("power", "—")} Вт', style='yellow'))
-        grid.add_row(Text(f'Прошло: {duration(elapsed)}'), Text(f'До остановки: {duration(remaining)}'))
-        grid.add_row(Text('Пул: ' + self.pool, style='dim'),
-                     Text(f'Защита: {self.stop_temp:g} °C · без перезапуска', style='dim'))
-        progress = ProgressBar(total=max(1, self.seconds), completed=min(elapsed, self.seconds),
-                               complete_style='cyan', finished_style='green')
+        temp_style = RED if temp is not None and temp >= self.stop_temp - 5 else GREEN
+        status_style = GREEN if self.finished is not None and self.status.startswith('Stopped') else CYAN
+        if any(word in self.status.lower() for word in ('interrupted', 'error', 'stopping')):
+            status_style = AMBER
+        brand = Text('VOLUNTARY', style=f'bold {CYAN}')
+        brand.append(' / FARMING', style='bold white')
+        brand.append('    ETC · ETCHASH', style=MUTED)
+        header = Group(brand, Text(self.status, style=status_style, overflow='ellipsis', no_wrap=True))
+        items = [header]
+        if compact:
+            items.append(Text(f'{sample.get("name", "NVIDIA GPU")}  |  {self.speed}  |  {temperature}', style=CYAN))
+            items.append(Text(f'GPU cap: {sample.get("power", "—")} W  ·  stop at {self.stop_temp:g} °C', style=MUTED))
+            items.append(Text(f'Left {duration(remaining)}  ·  elapsed {duration(elapsed)}  ·  A/R {self.accepted}/{self.rejected}'))
+        else:
+            trend = 'Waiting for measurements'
+            if self.speed_history:
+                levels = '▁▂▃▄▅▆▇█'
+                peak = max(self.speed_history) or 1
+                trend = ''.join(levels[min(7, int(value / peak * 7))] for value in self.speed_history)
+            cards = [metric('HASHRATE', self.speed, trend),
+                     metric('GPU CORE', temperature, f'Stop at {self.stop_temp:g} °C', temp_style),
+                     metric('GPU POWER CAP', f'{sample.get("power", "—")} W', 'Not whole-PC power draw', AMBER),
+                     metric('ACCEPTED / REJECTED', f'{self.accepted} / {self.rejected}', 'This session · screen count', GREEN)]
+            count = 4 if width >= 110 else 2
+            metrics = Table.grid(expand=True, padding=(0, 1))
+            for _ in range(count):
+                metrics.add_column(ratio=1)
+            for start in range(0, len(cards), count):
+                metrics.add_row(*cards[start:start + count])
+            items.extend([Text(''), metrics])
+            session = Table.grid(expand=True)
+            session.add_column(ratio=1)
+            session.add_column(justify='right')
+            session.add_row(Text('SESSION', style=f'bold {MUTED}'), Text('TIME LEFT  ' + duration(remaining), style=f'bold {CYAN}'))
+            session.add_row(Text(f'Elapsed {duration(elapsed)}  /  limit {duration(self.seconds)}', style=MUTED),
+                            Text('No automatic process restart', style=MUTED))
+            session_bar = ProgressBar(total=max(1, self.seconds), completed=min(elapsed, self.seconds),
+                                      style='#1e293b', complete_style='#0891b2', finished_style=GREEN)
+            items.append(Panel(Group(session, session_bar), border_style='#334155',
+                               style=f'on {BG}', box=box.ROUNDED, padding=(0, 1)))
+            connection = Text(sample.get('name', 'NVIDIA GPU'), style='bold white')
+            connection.append('  /  ' + self.pool, style=MUTED)
+            items.append(connection)
+        log_rows = max(1, log_rows)
         rows = list(self.lines)[-log_rows:]
         tail = ANSI.sub('', self.partial).strip()
         if tail:
             rows = (rows + [tail[:500]])[-log_rows:]
-        log = Text()
+        log = Table.grid(expand=True, padding=(0, 1))
+        log.add_column(width=7, no_wrap=True)
+        log.add_column(ratio=1, overflow='ellipsis', no_wrap=True)
         for line in rows:
             lowered = line.lower()
-            style = ('red' if any(word in lowered for word in ('error', 'failed', 'rejected')) else
-                     'green' if 'accepted' in lowered else 'white')
-            log.append(line + '\n', style=style)
+            if any(word in lowered for word in ('error', 'failed', 'rejected')):
+                tag, style = 'WARN', RED
+            elif 'accepted' in lowered:
+                tag, style = 'SHARE', GREEN
+            elif 'speed' in lowered:
+                tag, style = 'SPEED', CYAN
+            elif 'new job' in lowered:
+                tag, style = 'JOB', MUTED
+            else:
+                tag, style = 'INFO', '#cbd5e1'
+            log.add_row(Text(tag, style=f'bold {style}'), Text(line, style=style))
         if not rows:
-            log.append('Ожидание сообщений. Подтвердите UAC, если он появился.', style='dim')
-        return Group(
-            Panel(Group(header, Text(''), grid, Text(''), progress), border_style='cyan', box=box.ROUNDED),
-            Panel(log, title='Сообщения майнера и контроллера', border_style='bright_black', box=box.ROUNDED),
-            Text('Ctrl+C — остановить и восстановить мощность  •  Полный журнал: data/mining/miner.log', style='dim'),
-            Text('Шары ≠ выплата. Доход и баланс кошелька здесь не рассчитываются.', style='dim'),
-        )
+            log.add_row(Text('WAIT', style=AMBER), Text('Waiting for output. Approve the power helper UAC prompt if shown.', style=MUTED))
+        items.append(Panel(log, title=Text(' EVENT STREAM ', style=MUTED), title_align='left',
+                           border_style='#334155', style=f'on {BG}', box=box.ROUNDED, padding=(0, 1)))
+        footer = Text(' Ctrl+C ', style=f'bold {BG} on {CYAN}')
+        footer.append('  stop mining and restore the power cap', style=MUTED)
+        items.extend([footer, Text('Shares ≠ payouts · Screen counts are not your pool balance', style=MUTED)])
+        if not compact:
+            items.append(Text('Full log: data/mining/miner.log', style='#64748b'))
+        return Panel(Group(*items), border_style='#155e75', style=f'on {BG}', padding=(0, 1),
+                     box=box.ROUNDED, subtitle=Text('voluntary author support · pybindi', style='#64748b'))
 
 
 class DashboardHandler(logging.Handler):
@@ -188,8 +244,11 @@ class MiningConsole:
                             state.update(value)
                         else:
                             state.feed(value)
-                    rows = max(1, min(12, self.console.height - 16))
-                    live.update(state.render(log_rows=rows), refresh=True)
+                    width, height = self.console.width, self.console.height
+                    compact = width < 64 or height < (24 if width >= 110 else 29)
+                    overhead = 13 if compact else 23 if width >= 110 else 28
+                    rows = max(1, min(12, height - overhead))
+                    live.update(state.render(log_rows=rows, width=width, compact=compact), refresh=True)
                     if self.stopped.is_set() and self.events.empty():
                         break
                     self.stopped.wait(0.2)
@@ -202,9 +261,10 @@ if __name__ == '__main__':
     if Console is None:
         sys.exit('Install Rich: python -m pip install -r requirements-mining.txt')
     demo = DashboardState()
-    demo.update(dict(status='ДЕМО · без запуска GPU', pool='etc.2miners.com:11010',
+    demo.update(dict(status='DEMO · sample data · no GPU workload', pool='etc.2miners.com:11010',
                      sample=dict(name='NVIDIA GeForce RTX 5060', temp=51, power=123),
                      seconds=590, started=100))
     demo.feed('Average speed (15s): 51.37 Mh/s\nGPU 0: Share accepted (28 ms)\n')
-    demo.status = 'ДЕМО · без запуска GPU'
-    Console().print(demo.render(now=220))
+    demo.status = 'DEMO · sample data · no GPU workload'
+    console = Console()
+    console.print(demo.render(now=220, width=console.width, compact=console.width < 64))

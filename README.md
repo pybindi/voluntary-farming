@@ -1,187 +1,266 @@
-# Добровольный фарминг в поддержку автора
+<div align="center">
 
-**Автор: [pybindi](https://github.com/pybindi).** Прозрачный Windows-контроллер
-GPU-майнинга с интерфейсом Rich, ограничением мощности и времени работы.
+# Voluntary Farming
 
-> **Это добровольная поддержка автора, не заработок для запускающего.**
-> По умолчанию адрес получателя наград — адрес автора. Электричество,
-> комиссии, нагрузку и износ оборудования оплачивает владелец компьютера.
-> Нет гарантии дохода, окупаемости, ежедневных выплат или сохранности оборудования.
-> На бытовом тарифе расходы могут значительно превышать стоимость добытого ETC.
+### Your hardware. Your choice. Transparent author support.
 
-Майнинг **выключен по умолчанию**. Нет скрытого запуска, автозапуска Windows,
-автоматической установки майнера или автоматического перезапуска после остановки.
-Используйте только собственный компьютер либо оборудование, владелец которого
-явно согласился на майнинг, получателя наград и расходы. Не распространяйте
-сборки, которые скрывают эти условия или майнят без согласия.
+A Windows GPU-mining controller with a polished Rich dashboard,<br>
+explicit opt-in, bounded sessions, and power-recovery checks.
 
-## Как это выглядит
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-0891b2?style=flat-square)
+![Python: 3.11+](https://img.shields.io/badge/python-3.11%2B-67e8f9?style=flat-square)
+![UI: Rich](https://img.shields.io/badge/interface-Rich-8b5cf6?style=flat-square)
+![Mining: opt-in](https://img.shields.io/badge/mining-opt--in-22c55e?style=flat-square)
 
-Панель Rich показывает температуру ядра GPU, установленный лимит мощности,
-хешрейт из сообщений майнера, экранные счётчики принятых/отклонённых шар,
-таймер сеанса и цветную ленту событий. Полный вывод сохраняется отдельно.
-Без Rich либо при перенаправлении вывода в файл работает обычный текстовый режим.
+[Quick start](#quick-start) · [Dashboard](#dashboard) · [Safety](#safety--recovery) · [Author support](#author-support) · [Changelog](CHANGELOG.md)
 
-Безопасный **демонстрационный** предпросмотр, без майнинга, UAC, подключения
-к пулу и изменения GPU:
+</div>
+
+> [!IMPORTANT]
+> **This is voluntary farming to support the author, not an income service for the operator.**
+> The default reward recipient is the author. The operator pays for electricity,
+> fees, hardware load, and wear. Mining can cost substantially more than the ETC
+> it produces. No revenue, profitability, payout schedule, or hardware safety is guaranteed.
+
+Mining is **disabled by default**. No hidden mining, Windows autostart, automatic
+miner download, or automatic process restart. Use only hardware you own or have
+explicit permission to use, with informed consent about the recipient and costs.
+Do not distribute versions that hide these terms or mine without consent.
+
+## Dashboard
+
+![Rich dashboard with illustrative sample data; no real GPU workload](docs/dashboard.svg)
+
+*Illustrative demo, not live telemetry or proof of earnings.*
+
+| At a glance | Details |
+|---|---|
+| **Performance** | Reported hashrate with a compact recent-history sparkline |
+| **GPU health** | Core temperature, stop threshold, and configured power cap |
+| **Session control** | Elapsed time, time remaining, and progress bar |
+| **Event stream** | Color-coded `SHARE`, `SPEED`, `JOB`, and warning entries |
+| **Adaptive layout** | Four cards on wide terminals, two columns on standard windows, compact mode on smaller screens |
+| **Full logs** | Raw miner output retained locally, independently of rendering |
+
+The power card shows the **GPU power limit**, not whole-PC consumption. Share
+counts reflect this session's displayed messages, not the pool balance; screen
+events may be dropped under backpressure. The sparkline shows reported samples,
+not a forecast. Revenue and wallet balance are not calculated.
+
+Safe UI preview — **no mining, network access, UAC, or GPU changes**:
 
 ```powershell
 python -m pip install -r requirements-mining.txt
 python -X utf8 .\mining_console.py
 ```
 
-## Требования и ограничения
+Rich is optional. Missing Rich or redirected output falls back to plain text.
+Windows Terminal is recommended; BAT launchers enable Python UTF-8 mode.
 
-- Windows, Python 3.11+, одна NVIDIA GPU и штатная `nvidia-smi`.
-- Профиль разрабатывался для **RTX 5060**. Это не универсальный оптимизатор:
-  поддержка каждой другой карты не проверена. Неподдерживаемый лимит блокирует запуск.
-- Контроллер допускает мощность не выше **123 Вт**, температуру остановки
-  не выше **70 °C**, опрос до 2 секунд и сеанс не дольше **9 часов**.
-  Нельзя просто перенести эти значения на любую карту или повысить их без аудита кода.
-- Только ETCHASH, ETC и lolMiner 1.98a; CPU-майнинг не запускается.
-- GPU может показывать 100% загрузки: power limit ограничивает мощность,
-  а не процент занятости. Интерфейс показывает лимит, не потребление всего ПК.
-- Контроллер не разгоняет GPU и не меняет напряжения, частоты или вентиляторы.
+## Before you begin
 
-## Получатель наград
+| Requirement | Supported profile |
+|---|---|
+| OS / runtime | Windows, Python 3.11+, stock NVIDIA driver and `nvidia-smi` |
+| Hardware | Exactly one NVIDIA GPU; developed and exercised on an RTX 5060 |
+| Workload | lolMiner 1.98a · ETCHASH · Ethereum Classic (ETC) |
+| Power ceiling | 123 W; the requested limit must be supported by your GPU |
+| Thermal stop | At or below 70 °C core temperature |
+| Session ceiling | 9 hours, with a 10-second shutdown reserve |
+| Polling | Up to 2 seconds between checks, plus sensor-query latency |
 
-Публичный адрес поддержки автора в сети **Ethereum Classic (ETC)**:
+This is **not a universal GPU optimizer**. Other hardware has not been validated.
+Do not assume these settings fit another card or raise the code's hard ceilings
+without reviewing the implementation. GPU utilization may still reach 100%:
+power limiting is not a utilization percentage cap. CPU mining is not started;
+the miner and driver still use some CPU. The controller does not overclock,
+change voltage/clocks, or control fans.
+
+## Author support
+
+**Author:** [pybindi](https://github.com/pybindi)
+
+**Network:** Ethereum Classic (**ETC**, not ETH or TON)
 
 ```text
 0x3D4048E18480E900eD98EaD66e543786860723D7
 ```
 
-Он явно записан в `mining_config.json`; его можно просмотреть и изменить до
-запуска. Это не ETH и не TON. Приватный ключ и seed-фраза не нужны — не вводите их.
-Пул видит адрес, worker и сетевые данные подключения; статистика адреса может
-быть публичной. Шара означает принятый результат вычислений, **не выплату**.
-Награды учитываются пулом и выплачиваются по его условиям и порогу.
+The recipient is visible in `mining_config.json` and can be inspected or changed
+before launching. There is no hidden wallet substitution. **Never provide a seed
+phrase or private key** — neither is needed. The pool sees the address, worker,
+and connection details; address statistics may be public.
 
-Пул: `etc.2miners.com:11010`, TLS. Условия, комиссии, минимальную выплату и
-доступность в своём регионе необходимо проверить самостоятельно:
-[инструкция 2Miners](https://etc.2miners.com/help).
-Документация lolMiner указывает комиссию ETCHASH 0,7%; условия могут меняться.
+An accepted share is **not a wallet payout**. The pool accounts for rewards and
+pays according to its own threshold and schedule. Independently verify fees,
+minimum payouts, current service availability, regional terms, and tax obligations.
 
-## Настройка перед запуском
+- Default endpoint: `etc.2miners.com:11010`, TLS enabled.
+- Pool setup and terms: [2Miners ETC help](https://etc.2miners.com/help).
+- lolMiner documents a 0.7% ETCHASH developer fee; terms can change.
 
-1. Установите Python 3.11+ и зависимости интерфейса:
+## Quick start
 
-   ```powershell
-   python -m pip install -r requirements-mining.txt
-   ```
-
-2. Самостоятельно скачайте официальный
-   [lolMiner 1.98a Win64](https://github.com/Lolliedieb/lolMiner-releases/releases/tag/1.98a),
-   изучите лицензию и распакуйте необходимые файлы в `miners/lolMiner-1.98a/`.
-   Майнер и его DLL **не включены в репозиторий**. Не используйте сторонние
-   перепаковки. Не отключайте антивирус, Smart App Control или другие защиты
-   ради запуска и не добавляйте широкие исключения. При блокировке сначала
-   разберитесь с причиной; запуск может быть невозможен при действующей политике.
-
-   Зафиксированные хеши выбранного релиза:
-
-   | Файл | SHA256 |
-   |---|---|
-   | `lolMiner_v1.98a_Win64.zip` | `f2bbda2d2255155d50935967b8c55105b9aeefbd27cda3e8d01beaf535a16762` |
-   | `lolMiner.exe` | `45d54e54e0bfcae4f983a8c5db88d1e3fed1618b26d4461c76af8027c4ec4616` |
-
-   Проверка EXE:
-
-   ```powershell
-   Get-FileHash .\miners\lolMiner-1.98a\lolMiner.exe -Algorithm SHA256
-   ```
-
-   Хеш закрепляет выбранный файл, но не гарантирует его безопасность. Подлинность
-   цепочки Authenticode EXE при разработке не была подтверждена. Не подменяйте
-   ожидаемый хеш произвольным, чтобы обойти несовпадение.
-
-3. Узнайте UUID и поддерживаемые лимиты вашей GPU:
-
-   ```powershell
-   nvidia-smi --query-gpu=uuid,name,power.min_limit,power.max_limit --format=csv
-   ```
-
-4. В `mining_config.json` замените UUID-заглушку на UUID своей карты. Проверьте
-   `wallet`, `pool`, `worker`, путь и хеш EXE, мощность и длительность. Все
-   настройки открыты; никакой адрес не подменяется скрыто в бинарном файле.
-   Не меняйте значения во время работающего сеанса в расчёте на немедленное применение.
-
-## Явный запуск и остановка
-
-Откройте PowerShell в папке проекта **без прав администратора**.
+### 1 · Install the interface dependency
 
 ```powershell
-.\MINING.bat trial
+python -m pip install -r requirements-mining.txt
 ```
 
-**`trial` действительно майнит**, расходует электричество и отправляет награды
-получателю из конфигурации. Он разрешает один сеанс до 10 минут даже при
-`enabled=false`. Это не демонстрация интерфейса. Подтвердите отдельный UAC для
-помощника мощности только после проверки скрипта и настроек.
+### 2 · Obtain and verify the miner
 
-Для обычного сеанса явно установите `"enabled": true`, задайте `max_hours`
-от 1 минуты до 9 часов и выполните:
+Download the official [lolMiner 1.98a Win64 release](https://github.com/Lolliedieb/lolMiner-releases/releases/tag/1.98a),
+review its license, and extract the required EXE/runtime files into
+`miners/lolMiner-1.98a/`. **The miner and its DLLs are not bundled here.**
+
+<details>
+<summary><strong>Pinned release hashes and verification</strong></summary>
+
+| Artifact | SHA256 |
+|---|---|
+| `lolMiner_v1.98a_Win64.zip` | `f2bbda2d2255155d50935967b8c55105b9aeefbd27cda3e8d01beaf535a16762` |
+| `lolMiner.exe` | `45d54e54e0bfcae4f983a8c5db88d1e3fed1618b26d4461c76af8027c4ec4616` |
 
 ```powershell
-.\MINING.bat run
+Get-FileHash .\miners\lolMiner-1.98a\lolMiner.exe -Algorithm SHA256
 ```
 
-`run` не включается автоматически после `trial` или перезагрузки.
-Двойной щелчок BAT по умолчанию запускает только `check`; при `enabled=false`
-проверка сообщает об отключении. Остановка — **Ctrl+C в окне контроллера**.
-Окно помощника мощности не закрывайте до завершения восстановления.
+A matching hash pins a particular file; it does **not** guarantee safety. The
+EXE's Authenticode trust chain was not confirmed during development. Do not
+replace the expected hash with an arbitrary one just to bypass a mismatch.
 
-## Права, защита и восстановление
+</details>
 
-- Сам майнер запускается без повышения прав. Отдельный UAC-помощник
-  `mining_power.ps1` запускает только штатную `nvidia-smi` для мощности.
-- Для процесса помощника используется `-ExecutionPolicy RemoteSigned`.
-  Постоянные настройки PowerShell не меняются; политики организации имеют
-  приоритет. Это отдельное разрешение на локальный скрипт, не отключение Defender.
-- Лимит читается до сеанса и сохраняется в `data/mining/power-restore.json`.
-  Майнер стартует только после проверки применённой мощности.
-- Windows Job Object ограничивает группу процессов. При штатной остановке
-  сначала подтверждается завершение всей группы, затем возвращается **исходный**
-  лимит (не обязательно 145 Вт). Чужие процессы по имени не завершаются.
-- При выходе контроллера ОС завершает его группу, а помощник пробует вернуть
-  мощность. Восстановление после зависания, выключения питания, завершения
-  помощника или драйверной ошибки **не гарантировано**.
-- При незавершённом восстановлении новый сеанс блокируется. Не удаляйте журнал
-  для обхода защиты. При остановленном майнере выполните:
+> [!WARNING]
+> Do not disable antivirus, Smart App Control, or other protections, or add broad
+> exclusions to make a miner run. Investigate any block first. Your security
+> policy may legitimately prevent this software from starting.
 
-  ```powershell
-  .\MINING.bat restore
-  ```
+### 3 · Configure your GPU once
 
-  Если для записи мощности нужны права администратора, команда восстановления
-  может потребовать отдельного повышенного окна. Не запускайте майнинг в нём.
-- Таймер резервирует 10 секунд на остановку. Соблюдение точного срока при
-  зависшей Windows/драйвере не гарантируется. Не переводите ПК в сон во время сеанса.
-- Проверяется температура ядра, не все hotspot/VRAM-датчики. Между опросами
-  температура может вырасти. Оставляйте первую пробу под наблюдением.
-- Отрисовка Rich не выполняется в цикле защиты. При медленном терминале
-  часть экранных событий/счётчиков может пропускаться, но полный журнал остаётся.
-  Сбой записи журнала вызывает остановку при следующей проверке контроллера.
+```powershell
+nvidia-smi --query-gpu=uuid,name,power.min_limit,power.max_limit --format=csv
+```
 
-Журналы `data/mining/guard.log` и `data/mining/miner.log` остаются локальными.
-Не публикуйте логи, не проверив их содержимое.
+In `mining_config.json`, replace the all-zero GPU UUID placeholder with your
+device UUID. Review `wallet`, `pool`, `worker`, the EXE path/hash, power limit,
+and `max_hours`. Do not expect configuration edits to change a running session.
+The distributed configuration stays `enabled=false` until you explicitly opt in.
 
-## Экономика и ответственность
+### 4 · Choose a session
 
-При 123 Вт одна GPU за 9 часов расходует около 1,107 кВт·ч; весь компьютер —
-больше. Вычтите электричество, комиссии, обмен и износ из стоимости добытого.
-Здесь **нет автоматической остановки по убыточности** и расчёта дохода.
-Владелец оборудования принимает решение добровольно и может остановиться в любой момент.
-Соблюдайте местные законы, условия пула и налоговые требования.
+Open PowerShell in the project directory **without administrator rights**.
 
-## Проверка без майнинга
+| Action | Command | What it does |
+|---|---|---|
+| UI demo | `python -X utf8 .\mining_console.py` | Sample data only; no workload |
+| Setup check | `.\MINING.bat check` | No mining; reports disabled status until opted in |
+| Short trial | `.\MINING.bat trial` | Real mining for up to 10 minutes |
+| Normal session | `.\START_MINING.bat` | Runs `MINING.bat run`; requires `enabled=true` |
+| Stop | **Ctrl+C in the controller window** | Stops owned processes, then restores the original power limit |
+| Recover | `.\MINING.bat restore` | Completes pending power recovery; may require elevation |
+
+> [!CAUTION]
+> **`trial` is real mining**, not a UI preview. It uses electricity and sends
+> rewards to the configured recipient, even when `enabled=false`. Approve the
+> separate power-helper UAC prompt only after reviewing the script and settings.
+
+For normal sessions, set `"enabled": true` once and choose a duration from
+1 minute to 9 hours. Then double-click **`START_MINING.bat`** whenever you want
+to start; no per-session config edit is needed. `.\MINING.bat run` is equivalent.
+UAC, sensor checks, supported power limits, duplicate-instance prevention, and
+pending-recovery blocks still apply. This does not enable Windows autostart.
+
+Double-clicking `MINING.bat` itself runs **only the check**, not mining.
+Keep the separate power-helper window open until recovery finishes.
+
+## Safety & recovery
+
+```text
+Explicit launch → validate settings → save original power cap → UAC helper
+                → apply and verify cap → start contained workload
+                → monitor time / core temperature / cap / process
+                → stop owned processes → restore and verify original cap
+```
+
+- **Least privilege.** The miner stays unelevated. The separate
+  `mining_power.ps1` helper launches only stock `nvidia-smi` for power control.
+- **Process-scoped permission.** The helper uses `-ExecutionPolicy RemoteSigned`.
+  Persistent PowerShell policy is unchanged; organization policy takes priority.
+  This is not a Defender exclusion or security-policy bypass.
+- **Recovery journal.** Original power is saved in `data/mining/power-restore.json`
+  before changes. The workload starts only after verifying the requested cap.
+- **Contained processes.** A Windows Job Object owns the helper/workload tree.
+  Normal shutdown confirms the whole group has stopped before raising the cap.
+  Unrelated processes are not killed by name. The original limit is restored;
+  it is **not necessarily 145 W**.
+- **Fail closed.** Sensor failures, changed power caps, miner exit, or log-write
+  failures stop the session. An unfinished recovery blocks a new start.
+  Do not delete the journal to bypass it. Use `MINING.bat restore` only with
+  mining stopped; a write may need a separate elevated window. Never mine in that window.
+- **Best-effort crash recovery.** When the controller exits, Windows closes its
+  job and the independent power helper attempts recovery. Power loss, a hung
+  OS/driver, or terminating the helper can prevent restoration. Exact timing and
+  recovery are **not guaranteed** under those conditions.
+- **Temperature limitations.** Only core temperature is monitored, not every
+  hotspot/VRAM sensor. Temperature can rise between polls. Observe your first run.
+  Do not put the PC to sleep/hibernate during a session.
+- **Independent rendering.** Terminal I/O does not run in the safety loop.
+  A slow terminal may drop screen-only events, not the raw log. Screen failure
+  does not disable workload shutdown. These are software safeguards, not a
+  guarantee against hardware damage.
+
+## Connection troubleshooting
+
+lolMiner can reconnect to the pool within the same running process. This is
+different from restarting an exited miner, which the controller never does.
+Repeated `Lost connection to stratum server` messages waste work; a successful
+TLS handshake and new jobs show reconnection, not the cause of the outage.
+
+Prefer stable Ethernet if Wi-Fi is unreliable. Check whether other applications
+also lose connectivity before blaming the pool. A VPN may improve or worsen a
+route; do not use it to evade service restrictions. No network, DNS, firewall,
+or VPN settings are changed by this project.
+
+## Costs & privacy
+
+At a sustained 123 W, the GPU alone uses about **1.107 kWh in 9 hours**. The rest
+of the PC adds consumption. Subtract electricity, pool/miner fees, exchange costs,
+and wear from mining proceeds. There is **no profitability calculator or automatic
+loss-based shutdown**. Participation is optional; you can stop at any time.
+
+Logs stay local in `data/mining/guard.log` and `data/mining/miner.log`. Review logs
+before sharing them. Miner binaries, device-specific configuration from the
+development PC, credentials, and operating logs are not included in the repository.
+
+## Development
 
 ```powershell
 python -X utf8 -m unittest -v test_mine_guard.py test_mining_console.py
 ```
 
-Тесты используют модели GPU и обычные Python-процессы: не скачивают майнер,
-не обращаются к пулу, не меняют GPU и не выполняют реальный майнинг. Они проверяют
-таймер, тепловую остановку, восстановление, изоляцию процессов, вывод и ошибки UI.
-Они не доказывают выплаты, прибыльность, безопасность стороннего EXE или надёжность
-драйвера на любом оборудовании.
+Tests use fake GPU models and ordinary Python child processes. They do not mine,
+download miners, change GPU settings, or contact a pool. Coverage includes time
+and thermal stops, restoration ordering, process containment, output streaming,
+Unicode handling, blocked terminals, responsive layouts, and fallback rendering.
+Passing tests do not establish payouts, profitability, third-party EXE safety,
+or driver reliability on arbitrary hardware.
+
+### Project map
+
+| File | Purpose |
+|---|---|
+| `START_MINING.bat` | Explicit double-click launcher for an opted-in normal session |
+| `MINING.bat` | Check / trial / run / restore entry point |
+| `mine_guard.py` | Validation, process containment, supervision, recovery |
+| `mining_power.ps1` | Elevated, power-only helper |
+| `mining_console.py` | Adaptive Rich dashboard and harmless demo |
+| `mining_config.json` | Visible recipient and disabled-by-default hardware template |
+| `docs/dashboard.svg` | Generated illustrative dashboard preview |
+
+---
+
+<div align="center">
+<strong>Voluntary by design. Visible by default.</strong><br>
+Built by <a href="https://github.com/pybindi">pybindi</a> · No promised returns.
+</div>

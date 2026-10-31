@@ -82,7 +82,7 @@ class GuardTests(unittest.TestCase):
                     sleep=self.sleep, display=display)
         final = display.update.call_args.kwargs
         self.assertEqual(final['sample']['power'], 130)
-        self.assertIn('восстановлена', final['status'])
+        self.assertIn('restored', final['status'])
 
     def test_thermal_stop(self):
         def heat(gpu):
@@ -322,6 +322,7 @@ class GuardTests(unittest.TestCase):
                     g.load_config(path)
 
     def test_disabled_and_ton_wallet_are_blocked(self):
+        self.c['enabled'] = False
         with self.assertRaisesRegex(g.GuardError, 'disabled'):
             g.ready_command(self.c)
         self.c.update(enabled=True, pool='etc.example.org:5555', wallet='UQB_TON')
@@ -416,14 +417,14 @@ class WindowsTests(unittest.TestCase):
         path.write_bytes(b'previous-session\n')
         with path.open('ab') as logfile:
             owned = g.OwnedMiner([sys.executable, '-c',
-                                  "import os; os.write(1,'final: Привет'.encode('utf-8'))"],
+                                  "import os; os.write(1,'final: \\u4e16\\u754c'.encode('utf-8'))"],
                                  logfile, console=screen)
             try:
                 self.assertEqual(owned.process.wait(timeout=5), 0)
             finally:
                 owned.stop()
-        self.assertEqual(screen.getvalue(), 'final: Привет')
-        self.assertEqual(path.read_bytes(), b'previous-session\n' + 'final: Привет'.encode('utf-8'))
+        self.assertEqual(screen.getvalue(), 'final: \u4e16\u754c')
+        self.assertEqual(path.read_bytes(), b'previous-session\n' + 'final: \u4e16\u754c'.encode('utf-8'))
 
     def test_broken_console_does_not_break_logging(self):
         path = self.root / 'stream.log'

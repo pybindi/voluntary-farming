@@ -410,7 +410,7 @@ def supervise(c, command, gpu, spawn, *, journal=JOURNAL, power_helper=None,
     deadline_seconds = c['max_hours'] * 3600 - 10
     begin, begin_wall = monotonic(), wall()
     show(sample=sample, cap=target, stop_temp=c['stop_temperature_c'], pool=c.get('pool', '—'),
-         seconds=deadline_seconds, started=begin, status='Ожидание UAC · настройка мощности')
+         seconds=deadline_seconds, started=begin, status='Waiting for UAC · configuring power cap')
     write_journal(journal, {'uuid': c['gpu_uuid'], 'original_power_w': sample['power']})
     try:
         if power_helper is not None:
@@ -421,7 +421,7 @@ def supervise(c, command, gpu, spawn, *, journal=JOURNAL, power_helper=None,
         if abs(sample['power'] - target) > 0.5 or sample['temp'] >= c['stop_temperature_c']:
             raise GuardError('Power cap or temperature preflight failed; not starting')
         miner = spawn(command)
-        show(sample=sample, status='Процесс запущен · ожидаем хешрейт')
+        show(sample=sample, status='Process started · waiting for hashrate')
         LOG.info('Mining helper started (EXE startup not yet confirmed): cap %.1f W; stop at %.1f C; max %.2f h',
                  target, c['stop_temperature_c'], c['max_hours'])
         while True:
@@ -441,13 +441,13 @@ def supervise(c, command, gpu, spawn, *, journal=JOURNAL, power_helper=None,
             sleep(min(c['poll_seconds'], max(0, deadline_seconds - elapsed)))
     finally:
         # Stop the workload before restoring the larger original power limit.
-        show(status='Остановка майнера · восстановление ещё не подтверждено')
+        show(status='Stopping miner · power recovery not yet confirmed')
         if miner is not None:
             miner.stop()
         if power_helper is not None:
             power_helper.stop()
         restore_power(gpu, journal)
-        show(status='Остановлено · исходная мощность восстановлена',
+        show(status='Stopped · original power cap restored',
              sample=dict(sample, power=original_power), finished=monotonic())
 
 
@@ -493,7 +493,7 @@ def main():
                     supervise(c, command, gpu, lambda cmd: OwnedMiner(cmd, logfile, console=screen),
                               power_helper=PowerHelper(), display=screen)
                 except BaseException:
-                    screen.update(status='Сеанс прерван · проверьте журнал контроллера', finished=time.monotonic())
+                    screen.update(status='Session interrupted · check the controller log', finished=time.monotonic())
                     raise
             return 0
     except KeyboardInterrupt:

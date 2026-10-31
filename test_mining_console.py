@@ -36,7 +36,7 @@ class StateTests(unittest.TestCase):
         output = io.StringIO()
         ui.Console(file=output, width=110, force_terminal=False).print(state.render(now=220))
         text = output.getvalue()
-        for expected in ('RTX 5060', '51 °C', '123 Вт', '00:02:00', '00:07:50', '70 °C', '[link='):
+        for expected in ('RTX 5060', '51 °C', '123 W', '00:02:00', '00:07:50', '70 °C', '[link='):
             self.assertIn(expected, text)
 
     def test_redirected_console_has_plain_output(self):
@@ -47,6 +47,40 @@ class StateTests(unittest.TestCase):
             screen.flush()
             self.assertIsNone(screen.thread)
         self.assertEqual(output.getvalue(), 'raw output\n')
+
+    @unittest.skipIf(ui.Console is None, 'Rich not installed')
+    def test_layout_fits_wide_standard_and_compact_windows(self):
+        state = ui.DashboardState()
+        state.update(dict(sample=dict(name='RTX 5060', temp=51, power=123), seconds=590, started=100))
+        state.feed(('GPU 0: Share accepted (28 ms) ' + 'x' * 300 + '\n') * 12)
+        for width, height, compact, rows in [(120, 35, False, 12), (80, 30, False, 2),
+                                             (80, 24, True, 8), (60, 22, True, 4)]:
+            with self.subTest(width=width):
+                output = io.StringIO()
+                ui.Console(file=output, width=width, force_terminal=False).print(
+                    state.render(now=220, width=width, compact=compact, log_rows=rows))
+                lines = output.getvalue().splitlines()
+                self.assertLessEqual(len(lines), height)
+                self.assertTrue(all(len(line) <= width for line in lines))
+                self.assertIn('Ctrl+C', output.getvalue())
+                self.assertIn('51 °C', output.getvalue())
+
+    def test_speed_history_is_bounded_and_uses_only_reported_values(self):
+        state = ui.DashboardState()
+        for value in range(100):
+            state.feed(f'Average speed (15s): {value}.00 Mh/s\n')
+        self.assertEqual(len(state.speed_history), 24)
+        self.assertEqual(state.speed_history[-1], 99)
+
+    @unittest.skipIf(ui.Console is None, 'Rich not installed')
+    def test_hot_temperature_and_unknown_data_are_not_hidden(self):
+        state = ui.DashboardState()
+        state.sample = dict(temp=69, power=123)
+        render = state.render(now=0)
+        output = io.StringIO()
+        ui.Console(file=output, width=120, force_terminal=True, color_system='truecolor').print(render)
+        self.assertIn('69 °C', output.getvalue())
+        self.assertIn('Stop at 70 °C', ui.ANSI.sub('', output.getvalue()))
 
     def test_missing_rich_falls_back(self):
         with patch.object(ui, 'Console', None):
@@ -74,9 +108,9 @@ class StateTests(unittest.TestCase):
 
     def test_late_miner_message_cannot_overwrite_restored_status(self):
         state = ui.DashboardState()
-        state.update(dict(status='Остановлено · исходная мощность восстановлена', finished=200))
+        state.update(dict(status='Stopped · original power cap restored', finished=200))
         state.feed('Average speed (15s): 51.37 Mh/s\n')
-        self.assertTrue(state.status.startswith('Остановлено'))
+        self.assertTrue(state.status.startswith('Stopped'))
 
     def test_queue_never_blocks_when_full(self):
         screen = ui.MiningConsole(Mock(is_terminal=True))
