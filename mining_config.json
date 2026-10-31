@@ -1,0 +1,15 @@
+{
+  "enabled": false,
+  "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000000",
+  "power_limit_w": 123,
+  "stop_temperature_c": 70,
+  "max_hours": 9,
+  "poll_seconds": 2,
+  "algorithm": "ETCHASH",
+  "payout_coin": "ETC",
+  "pool": "etc.2miners.com:11010",
+  "wallet": "0x3D4048E18480E900eD98EaD66e543786860723D7",
+  "worker": "voluntary-support",
+  "miner_path": "miners/lolMiner-1.98a/lolMiner.exe",
+  "miner_sha256": "45d54e54e0bfcae4f983a8c5db88d1e3fed1618b26d4461c76af8027c4ec4616"
+}
